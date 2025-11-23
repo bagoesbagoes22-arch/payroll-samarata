@@ -1,20 +1,15 @@
 import streamlit as st
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 
 # --- KONFIGURASI HALAMAN ---
 st.set_page_config(page_title="Payroll Samarata", page_icon="🍗")
 
 st.title("🍗 Payroll Kedai Samarata")
-st.caption("Sistem Gaji & Lembur Otomatis")
+st.caption("Aplikasi sudah di-hack agar keyboard langsung Numeric Mode!")
 
 # --- KONSTANTA ---
 GAJI_POKOK = 50000
 RATE_LEMBUR_PER_JAM = 10000
-
-# --- LIST JAM & MENIT (Untuk Dropdown) ---
-# Kita buat list angka string "00" sampai "23" dan "00" sampai "59"
-list_jam = [f"{i:02d}" for i in range(24)]   # ["00", "01", ... "23"]
-list_menit = [f"{i:02d}" for i in range(60)] # ["00", "01", ... "59"]
 
 # --- INPUT DATA ---
 st.divider()
@@ -37,31 +32,28 @@ for hari in hari_kerja:
     jam_berangkat = None
     jam_pulang = None
     
-    # 2. Jika LEMBUR, Munculkan Roda Gulir (Dropdown)
+    # 2. Jika LEMBUR, Munculkan Input Jam
     if status == "Lembur":
-        st.write("🔻 **Jam Berangkat:**")
-        col_b1, col_b2 = st.columns(2)
         
-        with col_b1:
-            # Default jam 10 pagi (index 10)
-            b_jam = st.selectbox(f"Jam (Masuk) {hari}", list_jam, index=10, key=f"bj_{hari}")
-        with col_b2:
-            # Default menit 00 (index 0)
-            b_menit = st.selectbox(f"Menit (Masuk) {hari}", list_menit, index=0, key=f"bm_{hari}")
-            
-        st.write("🔻 **Jam Pulang:**")
-        col_p1, col_p2 = st.columns(2)
+        col_b, col_p = st.columns(2)
         
-        with col_p1:
-            # Default jam 21 malam (index 21)
-            p_jam = st.selectbox(f"Jam (Pulang) {hari}", list_jam, index=21, key=f"pj_{hari}")
-        with col_p2:
-            # Default menit 30 (index 30)
-            p_menit = st.selectbox(f"Menit (Pulang) {hari}", list_menit, index=30, key=f"pm_{hari}")
-
-        # Gabungkan Jam & Menit menjadi format Waktu agar bisa dihitung
-        jam_berangkat = time(int(b_jam), int(b_menit))
-        jam_pulang = time(int(p_jam), int(p_menit))
+        # JAM BERANGKAT
+        with col_b:
+            jam_berangkat = st.time_input(
+                f"Jam Berangkat {hari}", 
+                datetime.strptime("10:00", "%H:%M").time(), 
+                step=timedelta(minutes=1),
+                key=f"jb_{hari}"
+            )
+        
+        # JAM PULANG
+        with col_p:
+            jam_pulang = st.time_input(
+                f"Jam Pulang {hari}", 
+                datetime.strptime("21:30", "%H:%M").time(), 
+                step=timedelta(minutes=1),
+                key=f"jp_{hari}"
+            )
 
     data_mingguan[hari] = {
         "status": status,
@@ -70,7 +62,32 @@ for hari in hari_kerja:
     }
     st.write("---") 
 
-# --- TOMBOL PROSES ---
+# --- SUNTIKAN JAVASCRIPT UNTUK KEYBOARD NUMERIC ---
+# Kita gunakan inputmode='tel' agar muncul keypad telepon/angka yang lebih besar di Android
+js_code = """
+<script>
+    function setNumericKeyboard() {
+        // Target semua input teks yang digunakan oleh st.time_input
+        const timeInputs = document.querySelectorAll('input[type="text"]');
+        
+        timeInputs.forEach(input => {
+            // Cek apakah input adalah bagian dari widget jam/tanggal Streamlit
+            if (input.placeholder === "HH:MM" || input.placeholder === "HH:MM:SS") {
+                 // Set inputmode ke 'tel' (paling efektif di Android untuk keypad angka)
+                 input.setAttribute('inputmode', 'tel');
+            }
+        });
+    }
+    // Jalankan fungsi setelah Streamlit selesai memuat
+    window.onload = setNumericKeyboard;
+</script>
+"""
+# Baris ini menyuntikkan kode JavaScript ke halaman web
+st.markdown(js_code, unsafe_allow_html=True)
+# --- AKHIR SUNTIKAN ---
+
+
+# --- TOMBOL PROSES (Perhitungan) ---
 if st.button("💰 BUAT LAPORAN WA", type="primary", use_container_width=True):
     
     total_gaji_bersih = 0
@@ -90,19 +107,14 @@ if st.button("💰 BUAT LAPORAN WA", type="primary", use_container_width=True):
             gaji_harian = GAJI_POKOK
             laporan_text += f"| *{hari}* | Normal | - | Rp{gaji_harian:,} |\n"
             
-        elif data["status"] == "Lembur":
-            # Hitung selisih waktu
+        elif data["status"] == "Lembur" and data["berangkat"] and data["pulang"]:
+            # Perhitungan durasi (sama seperti sebelumnya)
             t1 = datetime.combine(datetime.today(), data["berangkat"])
             t2 = datetime.combine(datetime.today(), data["pulang"])
-            
             durasi = t2 - t1
             total_menit = durasi.total_seconds() / 60
+            if total_menit < 0: total_menit += 24 * 60
             
-            # Jika pulang lewat tengah malam (misal masuk 18:00 pulang 02:00)
-            if total_menit < 0:
-                total_menit += 24 * 60
-            
-            # Hitung lembur (di atas 8 jam / 480 menit)
             menit_lembur = total_menit - 480
             
             if menit_lembur > 0:
@@ -117,6 +129,11 @@ if st.button("💰 BUAT LAPORAN WA", type="primary", use_container_width=True):
             else:
                 gaji_harian = GAJI_POKOK
                 laporan_text += f"| *{hari}* | Normal/Kurang | - | Rp{gaji_harian:,} |\n"
+        
+        else:
+             gaji_harian = GAJI_POKOK
+             laporan_text += f"| *{hari}* | Normal | - | Rp{gaji_harian:,} |\n"
+
 
         total_gaji_bersih += gaji_harian
 
