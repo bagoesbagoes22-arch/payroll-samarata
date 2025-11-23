@@ -5,7 +5,7 @@ from datetime import datetime, time, timedelta
 st.set_page_config(page_title="Payroll Samarata", page_icon="🍗")
 
 st.title("🍗 Payroll Kedai Samarata")
-st.caption("Aplikasi sudah di-hack agar keyboard langsung Numeric Mode!")
+st.caption("Made by one and only, Bagus Sujarwo!")
 
 # --- KONSTANTA ---
 GAJI_POKOK = 50000
@@ -143,3 +143,4 @@ if st.button("💰 BUAT LAPORAN WA", type="primary", use_container_width=True):
     
     st.success("Laporan Berhasil Dibuat!")
     st.code(laporan_text, language='markdown')
+
